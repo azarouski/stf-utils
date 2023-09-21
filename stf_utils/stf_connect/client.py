@@ -286,9 +286,9 @@ class SmartphoneTestingFarmClient(SmartphoneTestingFarmAPI):
             correct_sdk_version_list = {i for i in range(min_sdk, max_sdk + 1)}
             device_is_appropriate = True
 
-            if int(flatten_device.get("sdk")) not in correct_sdk_version_list:
-                device_is_appropriate = False
-                continue
+            # if flatten_device.get("sdk") not in correct_sdk_version_list:
+            #     device_is_appropriate = False
+            #     continue
 
             for key, value in six.iteritems(specification.get("specs")):
                 if value not in {flatten_device.get(key), "ANY"}:

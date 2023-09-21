@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-import asyncio
 import json
 import logging
-import signal
-
-from autobahn.asyncio.websocket import WebSocketClientFactory
-
-import functools
 import os
+import ssl
+
+from autobahn.twisted.websocket import WebSocketClientFactory, connectWS
+from twisted.internet import reactor, ssl
+from twisted.python import log
 
 from stf_utils import init_console_logging
 from stf_utils.common.stfapi import SmartphoneTestingFarmAPI
@@ -25,30 +24,25 @@ def gracefully_exit(loop):
 
 
 def wsfactory(address, directory, resolution, keep_old_data):
-    loop = asyncio.get_event_loop()
-    gracefully_exit_handler = functools.partial(gracefully_exit, loop)
-    loop.add_signal_handler(signal.SIGTERM, gracefully_exit_handler)
-    loop.add_signal_handler(signal.SIGINT, gracefully_exit_handler)
-
     directory = create_directory_if_not_exists(directory)
     if not keep_old_data:
         remove_all_data(directory)
 
-    factory = WebSocketClientFactory("ws://{0}".format(address))
+    factory = WebSocketClientFactory(address)
     factory.protocol = STFRecordProtocol
     factory.protocol.img_directory = directory
     factory.protocol.address = address
     factory.protocol.resolution = resolution
 
-    coro = loop.create_connection(
-        factory, address.split(":")[0], address.split(":")[1]
-    )
-    log.info("Connecting to {0} ...".format(address))
-    loop.run_until_complete(coro)
-    try:
-        loop.run_forever()
-    finally:
-        loop.close()
+    # SSL client context: default
+    ##
+    if factory.isSecure:
+        contextFactory = ssl.ClientContextFactory()
+    else:
+        contextFactory = None
+
+    connectWS(factory, contextFactory)
+    reactor.run()
 
 
 def create_directory_if_not_exists(directory):
@@ -71,24 +65,24 @@ def remove_all_data(directory):
 
 
 def _get_device_serial(adb_connect_url, connected_devices_file_path):
-        device_serial = None
-        with open(connected_devices_file_path, "r") as devices_file:
-            for line in devices_file.readlines():
-                line = json.loads(line)
-                log.debug("Finding device serial of device connected as {0} in {1}".format(
-                    adb_connect_url,
-                    connected_devices_file_path
-                ))
-                if line.get("adb_url") == adb_connect_url:
-                    log.debug("Found device serial {0} for device connected as {1}".format(
-                        line.get("serial"),
-                        adb_connect_url)
-                    )
-                    device_serial = line.get("serial")
-                    break
-            else:
-                log.warning("No matching device serial found for device name {0}".format(adb_connect_url))
-        return device_serial
+    device_serial = None
+    with open(connected_devices_file_path, "r") as devices_file:
+        for line in devices_file.readlines():
+            line = json.loads(line)
+            log.debug("Finding device serial of device connected as {0} in {1}".format(
+                adb_connect_url,
+                connected_devices_file_path
+            ))
+            if line.get("adb_url") == adb_connect_url:
+                log.debug("Found device serial {0} for device connected as {1}".format(
+                    line.get("serial"),
+                    adb_connect_url)
+                )
+                device_serial = line.get("serial")
+                break
+        else:
+            log.warning("No matching device serial found for device name {0}".format(adb_connect_url))
+    return device_serial
 
 
 def run():
@@ -100,10 +94,10 @@ def run():
         if args["serial"]:
             device_props = api.get_device(args["serial"])
             props_json = device_props.json()
-            args["ws"] = props_json.get("device").get("display").get("url")
-            log.debug("Got websocket url {0} by device serial {1} from stf API".format(args["ws"], args["serial"]))
+            args["wss"] = props_json.get("device").get("display").get("url")
+            log.debug("Got websocket url {0} by device serial {1} from stf API".format(args["wss"], args["serial"]))
 
-        address = args["ws"].split("ws://")[-1]
+        address = args["wss"]
         return address
 
     parser = argparse.ArgumentParser(
@@ -115,7 +109,7 @@ def run():
         "-s", "--serial", help="Device serial"
     )
     generic_display_id_group.add_argument(
-        "-w", "--ws", help="WebSocket URL"
+        "-w", "--wss", help="WebSocket URL"
     )
     generic_display_id_group.add_argument(
         "-a", "--adb-connect-url", help="URL used to remote debug with adb connect, e.g. <host>:<port>"
@@ -157,6 +151,7 @@ def run():
         address=get_ws_url(api, args),
         keep_old_data=args["keep_old_data"]
     )
+
 
 if __name__ == "__main__":
     run()

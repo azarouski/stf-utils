@@ -1,6 +1,6 @@
 import time
 import logging
-from autobahn.asyncio.websocket import WebSocketClientProtocol
+from autobahn.twisted.websocket import WebSocketClientProtocol
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +48,7 @@ class STFRecordProtocol(WebSocketClientProtocol):
         if self.resolution:
             self.sendMessage(self.resolution.encode('ascii'))
         self.sendMessage('on'.encode('ascii'))
+
 
     def onMessage(self, payload, isBinary):
         if isBinary:
